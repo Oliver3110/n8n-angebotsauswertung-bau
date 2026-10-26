@@ -1,98 +1,56 @@
 {
-  "name": "Angebotsauswertung Bau: Einlesen, KI-Vergleich, Google Sheets",
+  "name": "Angebotsauswertung Bau: Einlesen, KI-Vergleich, Notion",
   "nodes": [
     {
       "parameters": {
-        "content": "## Punkt 3 – Einheitliches Format\nKI-Prompt + JSON-Schema: gleiche Struktur für jedes Angebot, Gewerk + Standard-Kategorien je Position. Der Code prüft Zahlen, Summen und fehlende Angaben.\n\n*Merge „Alle Texte sammeln“ wartet auf alle drei Zweige → danach läuft alles in EINEM Durchlauf (wichtig für den Vergleich in Punkt 4).*\n*Batching 2 Angebote / 12 s wegen Gemini-Free-Tier-Limit.*",
-        "height": 768,
-        "width": 1040,
-        "color": 5
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        1520,
-        -176
-      ],
-      "name": "Notiz Punkt 3"
-    },
-    {
-      "parameters": {
-        "content": "## Punkt 4 – KI-Angebotsvergleich\nKennzahlen (Min/Max/Median, Abweichung) rechnet der Code, die KI bewertet je Gewerk: Rang, Einstufung (empfohlen / geeignet / prüfen / abraten), Stärken/Schwächen, Empfehlung.\nDatenschutz: an die Vergleichs-KI gehen nur Geschäftsdaten, keine Kontaktdaten.",
-        "height": 512,
-        "width": 576,
-        "color": 4
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        2576,
-        176
-      ],
-      "name": "Notiz Punkt 4"
-    },
-    {
-      "parameters": {
-        "content": "## Punkt 5 – Ergebnis in Google Sheets\nEine Tabelle, 3 Tabs: **Angebote** (1 Zeile/Angebot), **Positionen** (1 Zeile/Leistung), **Bericht** (1 Zeile/Gewerk mit Empfehlung).\nVorher: Google-Sheets-Credential anlegen und Dokument auswählen.",
-        "height": 336,
-        "width": 960,
-        "color": 6
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        2576,
-        -176
-      ],
-      "name": "Notiz Punkt 5"
-    },
-    {
-      "parameters": {
+        "authentication": "none",
         "formTitle": "Angebote hochladen",
-        "formDescription": "Lade ein oder mehrere Angebote hoch (PDF, DOCX, Scan/Bild). Die Angebote werden ausgelesen, vereinheitlicht, per KI verglichen und in Google Sheets gespeichert.",
+        "formDescription": "Lade die Angebote eines Projekts hoch (PDF, DOCX, Scan/Bild). Positionen landen in Notion, der Vergleich auf der Seite Angebotsanalyse.",
         "formFields": {
           "values": [
             {
               "fieldLabel": "Angebotsdateien",
               "fieldType": "file",
               "fieldName": "angebote",
+              "multipleFiles": true,
               "acceptFileTypes": ".pdf,.docx,.png,.jpg,.jpeg,.webp",
               "requiredField": true
             }
           ]
         },
+        "responseMode": "lastNode",
+        "addFormPage": "",
         "options": {
-          "buttonLabel": "Angebote auswerten",
-          "path": "angebote-upload",
-          "respondWithOptions": {
-            "values": {
-              "formSubmittedText": "Danke! Die Auswertung läuft – die Ergebnisse erscheinen gleich im Google Sheet \"Angebotsauswertung\"."
-            }
-          }
+          "buttonLabel": "Weiter zur Prüfung",
+          "path": "angebote-notion"
         }
       },
       "name": "Angebote hochladen",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.6,
       "position": [
-        0,
-        192
+        -448,
+        304
       ]
     },
     {
       "parameters": {
-        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  for (const key of Object.keys(bin)) {\n    const b = bin[key];\n    const name = b.fileName || key;\n    const ext = String(b.fileExtension || name.split('.').pop() || '').toLowerCase();\n    let typ = 'unbekannt';\n    if (ext === 'pdf') typ = 'pdf';\n    else if (ext === 'docx') typ = 'docx';\n    else if (['png', 'jpg', 'jpeg', 'webp', 'heic', 'tif', 'tiff'].includes(ext)) typ = 'bild';\n    out.push({ json: { datei_name: name, datei_typ: typ }, binary: { data: b } });\n  }\n}\nreturn out;"
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const out = [];\nfor (const item of $('Angebote hochladen').all()) {\n  const bin = item.binary || {};\n  for (const key of Object.keys(bin)) {\n    const b = bin[key];\n    const name = b.fileName || key;\n    const ext = String(b.fileExtension || name.split('.').pop() || '').toLowerCase();\n    let typ = 'unbekannt';\n    if (ext === 'pdf') typ = 'pdf';\n    else if (ext === 'docx') typ = 'docx';\n    else if (['png', 'jpg', 'jpeg', 'webp', 'heic', 'tif', 'tiff'].includes(ext)) typ = 'bild';\n    // DOCX ist technisch ein ZIP-Archiv. Der Node 'DOCX entpacken' erkennt es nur an der Endung .zip\n    const data = typ === 'docx'\n      ? { ...b, fileExtension: 'zip', mimeType: 'application/zip', fileName: name + '.zip' }\n      : b;\n    out.push({ json: { datei_name: name, datei_typ: typ }, binary: { data } });\n  }\n}\nreturn out;",
+        "notice": ""
       },
       "name": "Dateien aufteilen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        224,
-        192
+        480,
+        304
       ]
     },
     {
       "parameters": {
+        "mode": "rules",
         "rules": {
           "values": [
             {
@@ -105,7 +63,6 @@
                 },
                 "conditions": [
                   {
-                    "id": "pdf",
                     "leftValue": "={{ $json.datei_typ }}",
                     "rightValue": "pdf",
                     "operator": {
@@ -129,7 +86,6 @@
                 },
                 "conditions": [
                   {
-                    "id": "docx",
                     "leftValue": "={{ $json.datei_typ }}",
                     "rightValue": "docx",
                     "operator": {
@@ -153,7 +109,6 @@
                 },
                 "conditions": [
                   {
-                    "id": "bild",
                     "leftValue": "={{ $json.datei_typ }}",
                     "rightValue": "bild",
                     "operator": {
@@ -169,6 +124,7 @@
             }
           ]
         },
+        "looseTypeValidation": false,
         "options": {
           "fallbackOutput": "none"
         }
@@ -177,13 +133,14 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        448,
-        176
+        704,
+        304
       ]
     },
     {
       "parameters": {
         "operation": "pdf",
+        "binaryPropertyName": "data",
         "options": {
           "joinPages": true,
           "keepSource": "json"
@@ -193,47 +150,58 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1.1,
       "position": [
-        1344,
-        0
+        1584,
+        112
       ]
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().map((item) => {\n  const j = item.json || {};\n  let text = j.text || j.content || j.xml || '';\n  if (Array.isArray(text)) text = text.join('\\n');\n  if (text && typeof text === 'object') text = JSON.stringify(text);\n  let name = j.datei_name;\n  let typ = j.datei_typ;\n  if (!name) {\n    try {\n      const src = $('Dateien aufteilen').item.json;\n      name = src.datei_name;\n      typ = src.datei_typ;\n    } catch (e) {}\n  }\n  return {\n    json: {\n      datei_name: name || 'unbekannt',\n      datei_typ: typ || 'unbekannt',\n      text: String(text).slice(0, 20000),\n    },\n  };\n});"
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return $input.all().map((item) => {\n  const j = item.json || {};\n  let text = j.text || j.content || j.xml || '';\n  if (Array.isArray(text)) text = text.join('\\n');\n  if (text && typeof text === 'object') text = JSON.stringify(text);\n  let name = j.datei_name;\n  let typ = j.datei_typ;\n  if (!name) {\n    try {\n      const src = $('Dateien aufteilen').item.json;\n      name = src.datei_name;\n      typ = src.datei_typ;\n    } catch (e) {}\n  }\n  return { json: { datei_name: name || 'unbekannt', datei_typ: typ || 'unbekannt', text: String(text).slice(0, 20000) } };\n});",
+        "notice": ""
       },
       "name": "Text vereinheitlichen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1792,
-        192
-      ]
-    },
-    {
-      "parameters": {},
-      "name": "DOCX entpacken",
-      "type": "n8n-nodes-base.compression",
-      "typeVersion": 1.1,
-      "position": [
-        672,
-        192
+        2032,
+        304
       ]
     },
     {
       "parameters": {
-        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  const key = keys.find((k) => String(bin[k].fileName || '').toLowerCase() === 'document.xml');\n  if (!key) continue;\n  out.push({ json: item.json || {}, binary: { data: bin[key] } });\n}\nreturn out;"
+        "operation": "decompress",
+        "binaryPropertyName": "data",
+        "outputPrefix": "file_"
+      },
+      "name": "DOCX entpacken",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const key = Object.keys(bin).find((k) => {\n    const fn = String(bin[k].fileName || '').toLowerCase();\n    const dir = String(bin[k].directory || '').toLowerCase();\n    return fn === 'document.xml' && (dir === '' || dir.includes('word'))\n      || fn.endsWith('word/document.xml');\n  });\n  if (!key) continue;\n  out.push({ json: item.json || {}, binary: { data: bin[key] } });\n}\nreturn out;",
+        "notice": ""
       },
       "name": "Dokument-XML waehlen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        896,
-        192
+        1136,
+        304
       ]
     },
     {
       "parameters": {
         "operation": "text",
+        "binaryPropertyName": "data",
         "destinationKey": "xml",
         "options": {
           "keepSource": "json"
@@ -243,20 +211,23 @@
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1.1,
       "position": [
-        1120,
-        192
+        1360,
+        304
       ]
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().map((item) => {\n  const xml = String(item.json.xml || '');\n  const text = xml\n    .replace(/<\\/w:p>/g, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/[ \\t]{2,}/g, ' ')\n    .replace(/\\n{2,}/g, '\\n')\n    .trim();\n  return {\n    json: {\n      datei_name: item.json.datei_name,\n      datei_typ: item.json.datei_typ,\n      text: text,\n    },\n  };\n});"
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return $input.all().map((item) => {\n  const xml = String(item.json.xml || '');\n  const text = xml\n    .replace(/<\\/w:p>/g, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/[ \\t]{2,}/g, ' ')\n    .replace(/\\n{2,}/g, '\\n')\n    .trim();\n  return { json: { datei_name: item.json.datei_name, datei_typ: item.json.datei_typ, text: text } };\n});",
+        "notice": ""
       },
       "name": "DOCX-Text saeubern",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
-        192
+        1584,
+        304
       ]
     },
     {
@@ -266,11 +237,13 @@
         "modelId": {
           "__rl": true,
           "mode": "list",
-          "value": "models/gemini-2.5-flash",
-          "cachedResultName": "gemini-2.5-flash"
+          "value": "models/gemini-3.8-flash",
+          "cachedResultName": "gemini-3.8-flash"
         },
         "text": "Gib den gesamten sichtbaren Text dieses Angebots wortgetreu wieder. Keine Zusammenfassung, keine Kommentare, nur der Text inklusive aller Zahlen, Beträge und Datumsangaben.",
         "inputType": "binary",
+        "binaryPropertyName": "data",
+        "simplify": true,
         "options": {
           "maxOutputTokens": 2000
         }
@@ -279,281 +252,448 @@
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
       "typeVersion": 1.2,
       "position": [
-        1344,
-        416
+        1584,
+        512
       ]
-    },
-    {
-      "parameters": {
-        "text": "=Dateiname: {{ $json.datei_name }}\n\nAngebotstext:\n{{ $json.text }}",
-        "schemaType": "manual",
-        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"anbieter\": {\n      \"type\": \"string\",\n      \"description\": \"Firmenname des Anbieters\"\n    },\n    \"angebotsnummer\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"Angebotsnummer, sonst null\"\n    },\n    \"angebotsdatum\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"Datum im Format YYYY-MM-DD, sonst null\"\n    },\n    \"gueltig_bis\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"Gültigkeitsdatum YYYY-MM-DD, sonst null\"\n    },\n    \"projekt\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"Projektbezeichnung, sonst null\"\n    },\n    \"gewerk\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"Elektro\",\n        \"Sanitär\",\n        \"Trockenbau\",\n        \"Rohbau\",\n        \"Sonstiges\"\n      ]\n    },\n    \"leistungsumfang\": {\n      \"type\": \"string\",\n      \"description\": \"Ein Satz: was wird insgesamt angeboten\"\n    },\n    \"positionen\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"bezeichnung_original\": {\n            \"type\": \"string\",\n            \"description\": \"Leistung wörtlich wie im Angebot\"\n          },\n          \"kategorie\": {\n            \"type\": \"string\",\n            \"description\": \"Standard-Kategorie aus der Liste im Systemprompt\"\n          },\n          \"menge\": {\n            \"type\": [\n              \"number\",\n              \"null\"\n            ]\n          },\n          \"einheit\": {\n            \"type\": [\n              \"string\",\n              \"null\"\n            ]\n          },\n          \"einzelpreis\": {\n            \"type\": [\n              \"number\",\n              \"null\"\n            ]\n          },\n          \"gesamtpreis\": {\n            \"type\": [\n              \"number\",\n              \"null\"\n            ]\n          }\n        },\n        \"required\": [\n          \"bezeichnung_original\",\n          \"kategorie\"\n        ]\n      }\n    },\n    \"netto_summe\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"mwst_betrag\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"brutto_summe\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"gesamtpreis\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ],\n      \"description\": \"Der Endbetrag, den der Anbieter als Gesamtpreis nennt\"\n    },\n    \"preisbasis\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"netto\",\n        \"brutto\",\n        \"unklar\"\n      ]\n    },\n    \"preisart\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"positionsweise\",\n        \"pauschal\",\n        \"circa\",\n        \"nach_aufwand\"\n      ]\n    },\n    \"waehrung\": {\n      \"type\": \"string\"\n    },\n    \"ausfuehrungszeitraum\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"Zeitraum/Dauer wörtlich, sonst null\"\n    },\n    \"dauer_wochen_min\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"dauer_wochen_max\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"enthalten\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"ausschluesse\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"zusatzkosten_risiken\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"sonstige_hinweise\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    }\n  },\n  \"required\": [\n    \"anbieter\",\n    \"gewerk\",\n    \"leistungsumfang\",\n    \"positionen\",\n    \"preisbasis\",\n    \"preisart\",\n    \"waehrung\",\n    \"enthalten\",\n    \"ausschluesse\",\n    \"zusatzkosten_risiken\"\n  ]\n}",
-        "options": {
-          "systemPromptTemplate": "Du bist Sachbearbeiter im Einkauf eines Bauunternehmens. Du überführst Angebote von Subunternehmern in EIN EINHEITLICHES Datenformat, damit Angebote verschiedener Anbieter direkt vergleichbar werden. Jedes Angebot muss exakt dieselbe Struktur haben – egal ob es als Tabelle, Fließtext, Word-Datei oder Scan vorliegt.\n\nGRUNDREGELN\n- Verwende ausschließlich Informationen aus dem Text. Erfinde nichts. Fehlt eine Angabe: null (bzw. leere Liste).\n- Beträge als reine Zahl ohne Währungszeichen und ohne Tausenderpunkt, Dezimalpunkt (z. B. 11500 oder 1400.5).\n- Datumsangaben immer YYYY-MM-DD.\n\nGEWERK – wähle genau eines:\nElektro | Sanitär | Trockenbau | Rohbau | Sonstiges\n(Rohbau = Erd-, Fundament-, Mauer-, Dach-, Fenster-/Türarbeiten; Sonstiges = nicht eindeutig zuordenbar.)\n\nPOSITIONEN – Standard-Kategorien (Feld \"kategorie\"), damit gleiche Leistungen trotz unterschiedlicher Formulierung vergleichbar werden. Ordne jede Position der passendsten Kategorie ihres Gewerks zu, den Originaltext behältst du in \"bezeichnung_original\":\n- Elektro: Leitungen/Verkabelung | Verteilung/Sicherungstechnik | Elektroinstallation/Montage | Komplettpaket Elektro\n- Sanitär: Rohrinstallation/Leitungen | Sanitärobjekte/Ausstattung | Montage/Anschlüsse | Wartung | Komplettpaket Sanitär\n- Trockenbau: Trockenbauwände | Decken/Deckenabhängung | Schallschutz | Komplettpaket Trockenbau\n- Rohbau: Erdarbeiten/Aushub | Fundament/Bodenplatte | Mauerwerk/Rohbau | Dach | Fenster/Türen | Innenausbau\n- Sonstiges: Sonstige Leistung\nBeispiele: \"Sicherungskasten\" -> Verteilung/Sicherungstechnik; \"Badezimmerausstattung\" und \"Armaturen\" -> Sanitärobjekte/Ausstattung; \"Deckenverkleidung\" -> Decken/Deckenabhängung; \"Aushubarbeiten\" -> Erdarbeiten/Aushub; \"Dachstuhl\"/\"Dachkonstruktion\" -> Dach.\n- Nennt das Angebot KEINE Einzelpreise, sondern nur eine Gesamtsumme, lege genau EINE Position \"Komplettpaket <Gewerk>\" mit gesamtpreis = Gesamtsumme an und schreibe die genannten Teilleistungen in \"enthalten\".\n- Zeilen wie \"Gesamt\", \"Zwischensumme\" oder \"MwSt.\" sind KEINE Positionen.\n\nPREISE\n- gesamtpreis = der Endbetrag, den das Angebot als Gesamtpreis nennt.\n- netto_summe / mwst_betrag / brutto_summe nur, wenn ausdrücklich angegeben.\n- preisbasis: \"netto\" oder \"brutto\" nur, wenn erkennbar (z. B. Zwischensumme + MwSt. = Gesamtpreis -> brutto); sonst \"unklar\".\n- preisart: \"positionsweise\" (Einzelpreise je Position), \"pauschal\" (Festpreis/Pauschale/Komplettpaket), \"circa\" (ca., rund, ungefähr), \"nach_aufwand\" (Abrechnung nach Aufwand/Stunden).\n\nZEITRAUM\n- ausfuehrungszeitraum wörtlich übernehmen. dauer_wochen_min/max nur, wenn eine Dauer genannt ist (z. B. \"4-6 Wochen\" -> 4 und 6; \"5 Wochen\" -> 5 und 5). Monatsangaben ohne Dauer -> null.\n\nHINWEISE\n- enthalten: ausdrücklich inkludierte Leistungen (z. B. \"Wartung 1 Jahr\", \"Schallschutz\", \"Material\").\n- ausschluesse: ausdrücklich NICHT enthaltene Leistungen (z. B. \"Fliesenarbeiten\").\n- zusatzkosten_risiken: alles, was den Preis noch verändern kann (z. B. \"Materialpreise können variieren\", \"Abrechnung nach Aufwand\", \"ca.-Preis\").\n- Keine personenbezogenen Daten (Namen von Ansprechpartnern, Telefonnummern, E-Mail-Adressen) übernehmen.",
-          "batching": {
-            "batchSize": 2,
-            "delayBetweenBatches": 12000
-          }
-        }
-      },
-      "name": "Angebotsdaten extrahieren",
-      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
-      "typeVersion": 1.2,
-      "position": [
-        2016,
-        192
-      ]
-    },
-    {
-      "parameters": {
-        "modelName": "models/gemini-2.5-flash",
-        "options": {
-          "temperature": 0
-        }
-      },
-      "name": "Gemini Modell",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1.1,
-      "position": [
-        2096,
-        416
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Punkt 3: Werte prüfen und vereinheitlichen – ein Item pro Angebot\nconst toNumber = (v) => {\n  if (v === null || v === undefined || v === '') return null;\n  if (typeof v === 'number') return isNaN(v) ? null : v;\n  let s = String(v).replace(/[^0-9,.-]/g, '');\n  if (s.includes(',') && s.includes('.')) {\n    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\\./g, '').replace(/,/g, '.') : s.replace(/,/g, '');\n  } else if (s.includes(',')) {\n    s = s.replace(/\\./g, '').replace(/,/g, '.');\n  }\n  const n = parseFloat(s);\n  return isNaN(n) ? null : n;\n};\nconst clean = (v) => (v === null || v === undefined ? '' : String(v).trim());\nconst list = (v) => (Array.isArray(v) ? v.map(clean).filter(Boolean) : clean(v) ? [clean(v)] : []);\nconst round2 = (n) => (n === null ? null : Math.round(n * 100) / 100);\n\nreturn $input.all().map((item, i) => {\n  const o = item.json.output || {};\n  let datei_name = 'unbekannt', datei_typ = 'unbekannt';\n  try {\n    const src = $('Text vereinheitlichen').all()[i].json;\n    datei_name = src.datei_name || datei_name;\n    datei_typ = src.datei_typ || datei_typ;\n  } catch (e) {}\n\n  const positionen = (Array.isArray(o.positionen) ? o.positionen : []).map((p) => ({\n    bezeichnung_original: clean(p.bezeichnung_original),\n    kategorie: clean(p.kategorie) || 'Sonstige Leistung',\n    menge: toNumber(p.menge),\n    einheit: clean(p.einheit),\n    einzelpreis: toNumber(p.einzelpreis),\n    gesamtpreis: toNumber(p.gesamtpreis),\n  }));\n\n  let netto = toNumber(o.netto_summe);\n  let mwst = toNumber(o.mwst_betrag);\n  let brutto = toNumber(o.brutto_summe);\n  if (brutto === null && netto !== null && mwst !== null) brutto = round2(netto + mwst);\n  let gesamt = toNumber(o.gesamtpreis);\n  if (gesamt === null) gesamt = brutto !== null ? brutto : netto;\n\n  // Plausibilitätsprüfung: Summe der Positionen vs. Netto- bzw. Gesamtsumme\n  const summePos = round2(positionen.reduce((s, p) => s + (p.gesamtpreis || 0), 0));\n  const pruefhinweise = [];\n  if (positionen.length > 1 && summePos > 0) {\n    const vergleich = netto !== null ? netto : gesamt;\n    if (vergleich !== null && Math.abs(summePos - vergleich) > 1) {\n      pruefhinweise.push(`Positionssumme ${summePos} weicht von Summe ${vergleich} ab`);\n    }\n  }\n\n  const fehlend = [];\n  if (!clean(o.anbieter)) fehlend.push('Anbieter');\n  if (gesamt === null) fehlend.push('Gesamtpreis');\n  if (!clean(o.angebotsdatum)) fehlend.push('Angebotsdatum');\n  if (!clean(o.ausfuehrungszeitraum)) fehlend.push('Ausführungszeitraum');\n  if (!clean(o.projekt)) fehlend.push('Projekt');\n\n  return {\n    json: {\n      angebot_id: `A${String(i + 1).padStart(2, '0')}`,\n      datei_name,\n      datei_typ,\n      anbieter: clean(o.anbieter),\n      angebotsnummer: clean(o.angebotsnummer),\n      angebotsdatum: clean(o.angebotsdatum),\n      gueltig_bis: clean(o.gueltig_bis),\n      projekt: clean(o.projekt) || 'ohne Projektangabe',\n      gewerk: clean(o.gewerk) || 'Sonstiges',\n      leistungsumfang: clean(o.leistungsumfang),\n      positionen,\n      anzahl_positionen: positionen.length,\n      netto_summe: netto,\n      mwst_betrag: mwst,\n      brutto_summe: brutto,\n      gesamtpreis: gesamt,\n      preisbasis: clean(o.preisbasis) || 'unklar',\n      preisart: clean(o.preisart) || 'pauschal',\n      waehrung: clean(o.waehrung) || 'EUR',\n      ausfuehrungszeitraum: clean(o.ausfuehrungszeitraum),\n      dauer_wochen_min: toNumber(o.dauer_wochen_min),\n      dauer_wochen_max: toNumber(o.dauer_wochen_max),\n      enthalten: list(o.enthalten),\n      ausschluesse: list(o.ausschluesse),\n      zusatzkosten_risiken: list(o.zusatzkosten_risiken),\n      sonstige_hinweise: clean(o.sonstige_hinweise),\n      fehlende_angaben: fehlend,\n      pruefhinweise,\n      datenstatus: fehlend.length || pruefhinweise.length ? 'prüfen' : 'vollständig',\n    },\n  };\n});"
-      },
-      "name": "Werte normalisieren",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2368,
-        192
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Punkt 5a: Eine Zeile pro Position – für den Leistungsvergleich über Anbieter hinweg\nconst auswertung_id = $execution.id;\nconst out = [];\nfor (const item of $input.all()) {\n  const a = item.json;\n  const pos = a.positionen.length ? a.positionen : [{ bezeichnung_original: '(keine Positionen erkennbar)', kategorie: 'Sonstige Leistung' }];\n  pos.forEach((p, idx) => {\n    out.push({\n      json: {\n        auswertung_id,\n        angebot_id: a.angebot_id,\n        projekt: a.projekt,\n        gewerk: a.gewerk,\n        anbieter: a.anbieter,\n        pos_nr: idx + 1,\n        kategorie: p.kategorie,\n        bezeichnung_original: p.bezeichnung_original,\n        menge: p.menge ?? '',\n        einheit: p.einheit ?? '',\n        einzelpreis: p.einzelpreis ?? '',\n        positionspreis: p.gesamtpreis ?? '',\n        preisart: a.preisart,\n        datei_name: a.datei_name,\n      },\n    });\n  });\n}\nreturn out;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2592,
-        0
-      ],
-      "name": "Positionen auflösen"
-    },
-    {
-      "parameters": {
-        "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Angebotsauswertung Müller & Partner"
-        },
-        "sheetName": {
-          "__rl": true,
-          "mode": "name",
-          "value": "Positionen"
-        },
-        "columns": {
-          "mappingMode": "autoMapInputData",
-          "value": {},
-          "matchingColumns": [],
-          "schema": []
-        },
-        "options": {
-          "handlingExtraData": "insertInNewColumn"
-        }
-      },
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.7,
-      "position": [
-        2816,
-        0
-      ],
-      "name": "Sheet: Positionen"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Punkt 4 (Vorbereitung): Angebote je Projekt + Gewerk gruppieren und Kennzahlen\n// regelbasiert berechnen. Die KI bekommt fertige Zahlen -> nachvollziehbar, keine Rechenfehler.\nconst groups = {};\nfor (const item of $input.all()) {\n  const a = item.json;\n  const key = `${a.projekt} | ${a.gewerk}`;\n  (groups[key] = groups[key] || { projekt: a.projekt, gewerk: a.gewerk, angebote: [] }).angebote.push(a);\n}\n\nconst median = (arr) => {\n  const s = [...arr].sort((x, y) => x - y);\n  const m = Math.floor(s.length / 2);\n  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;\n};\nconst r2 = (n) => Math.round(n * 100) / 100;\n\nreturn Object.values(groups).map((g) => {\n  const preise = g.angebote.map((a) => a.gesamtpreis).filter((p) => typeof p === 'number');\n  const med = preise.length ? median(preise) : null;\n  const kennzahlen = {\n    anzahl_angebote: g.angebote.length,\n    anzahl_mit_preis: preise.length,\n    preis_min: preise.length ? Math.min(...preise) : null,\n    preis_max: preise.length ? Math.max(...preise) : null,\n    preis_median: med,\n    preis_durchschnitt: preise.length ? r2(preise.reduce((s, p) => s + p, 0) / preise.length) : null,\n  };\n\n  const angebote = g.angebote.map((a) => {\n    const abw = med && typeof a.gesamtpreis === 'number' ? r2(((a.gesamtpreis - med) / med) * 100) : null;\n    const flags = [];\n    if (abw !== null && preise.length >= 3 && abw <= -15) flags.push(`Preis ${abw}% unter Median – ungewöhnlich niedrig, Leistungsumfang prüfen`);\n    if (abw !== null && preise.length >= 3 && abw >= 15) flags.push(`Preis ${abw}% über Median`);\n    if (a.preisart === 'circa') flags.push('nur Circa-Preis');\n    if (a.preisart === 'nach_aufwand') flags.push('Abrechnung nach Aufwand – Kosten offen');\n    if (a.preisbasis === 'unklar') flags.push('netto/brutto nicht angegeben');\n    if (a.ausschluesse.length) flags.push('Ausschlüsse: ' + a.ausschluesse.join(', '));\n    if (a.zusatzkosten_risiken.length) flags.push('Kostenrisiken: ' + a.zusatzkosten_risiken.join(', '));\n    if (a.fehlende_angaben.length) flags.push('Fehlt: ' + a.fehlende_angaben.join(', '));\n    flags.push(...a.pruefhinweise);\n    // Nur Geschäftsdaten an die Vergleichs-KI (Datenminimierung)\n    return {\n      angebot_id: a.angebot_id,\n      anbieter: a.anbieter,\n      angebotsdatum: a.angebotsdatum,\n      leistungsumfang: a.leistungsumfang,\n      kategorien: [...new Set(a.positionen.map((p) => p.kategorie))],\n      gesamtpreis: a.gesamtpreis,\n      preisbasis: a.preisbasis,\n      preisart: a.preisart,\n      abweichung_median_prozent: abw,\n      ausfuehrungszeitraum: a.ausfuehrungszeitraum,\n      dauer_wochen_min: a.dauer_wochen_min,\n      dauer_wochen_max: a.dauer_wochen_max,\n      enthalten: a.enthalten,\n      ausschluesse: a.ausschluesse,\n      zusatzkosten_risiken: a.zusatzkosten_risiken,\n      auffaelligkeiten_regelbasiert: flags,\n    };\n  });\n\n  return { json: { projekt: g.projekt, gewerk: g.gewerk, kennzahlen, angebote } };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2592,
-        304
-      ],
-      "name": "Kennzahlen je Gewerk"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "=Projekt: {{ $json.projekt }}\nGewerk: {{ $json.gewerk }}\n\nKennzahlen (regelbasiert berechnet):\n{{ JSON.stringify($json.kennzahlen, null, 2) }}\n\nAngebote:\n{{ JSON.stringify($json.angebote, null, 2) }}\n\nVergleiche diese Angebote, bewerte jedes einzeln und gib eine begründete Empfehlung.",
+        "text": "=Extrahiere die Angebotsdaten aus folgendem Angebot:\n\n{{ $json.text }}",
         "hasOutputParser": true,
-        "messages": {
-          "messageValues": [
-            {
-              "type": "SystemMessagePromptTemplate",
-              "message": "Du bist erfahrener Einkäufer eines Bauunternehmens und bereitest eine Vergabeentscheidung vor. Du vergleichst Angebote EINES Gewerks für EIN Projekt.\n\nREGELN\n- Nutze nur die übergebenen Daten. Erfinde keine Preise, Leistungen oder Fristen.\n- Der niedrigste Preis ist nicht automatisch das beste Angebot. Bewerte Preis UND Leistungsumfang (enthalten/Ausschlüsse), Preissicherheit (positionsweise/pauschal besser als circa/nach Aufwand), Termin und Vollständigkeit.\n- Ungewöhnlich niedrige Preise (siehe abweichung_median_prozent und auffaelligkeiten_regelbasiert) als Risiko benennen: möglicherweise fehlender Leistungsumfang oder spätere Nachträge.\n- Unklare oder fehlende Angaben sind eine Schwäche. Angebote mit \"nach_aufwand\" und ohne konkreten Leistungsumfang stufst du als \"abraten\" ein.\n- Unterschiedliche Leistungsumfänge (z. B. Wartung inklusive, Fliesen ausgeschlossen) ausdrücklich gegenüberstellen.\n- Einstufung: \"empfohlen\" (genau eines, das beste Gesamtpaket) | \"geeignet\" | \"prüfen\" (Nachfrage beim Anbieter nötig) | \"abraten\".\n- Rang 1 = bestes Angebot, jede angebot_id genau einmal bewerten.\n- Gibt es nur ein Angebot, sage klar, dass kein Vergleich möglich ist, und bewerte es trotzdem.\n- Kurz, sachlich, auf Deutsch. Stärken/Schwächen/Auffälligkeiten jeweils als kurze Stichpunkte."
-            }
-          ]
-        },
-        "batching": {
-          "batchSize": 1,
-          "delayBetweenBatches": 1500
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.9,
-      "position": [
-        2816,
-        304
-      ],
-      "name": "Angebote vergleichen (KI)"
-    },
-    {
-      "parameters": {
-        "modelName": "models/gemini-2.5-flash",
+        "notice": "",
+        "needsFallback": false,
         "options": {
-          "temperature": 0.2
+          "systemMessage": "Du extrahierst Angebotsdaten aus deutschsprachigen Angeboten von Subunternehmern.\nRegeln:\n- Verwende ausschließlich Informationen aus dem Text. Erfinde keine Informationen.\n- Preis einer Position nur übernehmen, wenn er eindeutig ist, sonst null.\n- Gesamtpreis nur übernehmen, wenn er eindeutig erkennbar ist, sonst null.\n- Beträge als reine Zahl mit Punkt als Dezimaltrennzeichen, ohne Währungszeichen.\n- Datum im Format YYYY-MM-DD.\n- Hinweise (Ausschlüsse, Zusatzkosten, Bedingungen, Ausführungszeitraum) nur, wenn vorhanden, sonst leerer Text."
         }
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1.1,
+      "name": "Angebotsdaten extrahieren",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
       "position": [
-        2816,
-        528
-      ],
-      "name": "Gemini Modell Vergleich"
+        2400,
+        0
+      ]
     },
     {
       "parameters": {
-        "schemaType": "manual",
-        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"zusammenfassung\": {\n      \"type\": \"string\",\n      \"description\": \"2-4 Sätze Überblick über das Gewerk\"\n    },\n    \"empfehlung_angebot_id\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"empfehlung_anbieter\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"empfehlung_begruendung\": {\n      \"type\": \"string\"\n    },\n    \"bewertungen\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"angebot_id\": {\n            \"type\": \"string\"\n          },\n          \"anbieter\": {\n            \"type\": \"string\"\n          },\n          \"rang\": {\n            \"type\": \"integer\"\n          },\n          \"einstufung\": {\n            \"type\": \"string\",\n            \"enum\": [\n              \"empfohlen\",\n              \"geeignet\",\n              \"prüfen\",\n              \"abraten\"\n            ]\n          },\n          \"staerken\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"schwaechen\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"auffaelligkeiten\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"kurzbegruendung\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"angebot_id\",\n          \"anbieter\",\n          \"rang\",\n          \"einstufung\",\n          \"staerken\",\n          \"schwaechen\",\n          \"auffaelligkeiten\",\n          \"kurzbegruendung\"\n        ]\n      }\n    }\n  },\n  \"required\": [\n    \"zusammenfassung\",\n    \"empfehlung_begruendung\",\n    \"bewertungen\"\n  ]\n}"
+        "notice": "",
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0
+        }
       },
+      "name": "Groq Modell Extraktion",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "notice": "",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"anbieter\": \"Muster Bau GmbH\",\n  \"datum\": \"2026-09-01\",\n  \"projekt\": \"Neubau Lagerhalle\",\n  \"positionen\": [\n    {\n      \"leistung\": \"Erdarbeiten\",\n      \"preis\": 12500.0\n    }\n  ],\n  \"gesamtpreis\": 12500.0,\n  \"hinweise\": \"Ausführung KW 40 bis 44, Entsorgung nicht enthalten\"\n}",
+        "autoFix": false
+      },
+      "name": "Angebotsschema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        2976,
-        528
-      ],
-      "name": "Vergleichs-Format"
+        2544,
+        480
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Punkt 5b: Eine Zeile pro Angebot = extrahierte Daten + Kennzahlen + KI-Bewertung\nconst auswertung_id = $execution.id;\nconst erfasst_am = $now.toFormat('yyyy-MM-dd HH:mm');\nconst gruppen = $('Kennzahlen je Gewerk').all();\nconst alleAngebote = $('Werte normalisieren').all().map((x) => x.json);\nconst txt = (v) => (Array.isArray(v) ? v.join('; ') : v ?? '');\n\nconst out = [];\n$input.all().forEach((item, i) => {\n  const g = gruppen[i].json;\n  const ki = item.json.output || {};\n  const bew = Array.isArray(ki.bewertungen) ? ki.bewertungen : [];\n  for (const k of g.angebote) {\n    const a = alleAngebote.find((x) => x.angebot_id === k.angebot_id) || {};\n    const b = bew.find((x) => x.angebot_id === k.angebot_id) || {};\n    out.push({\n      json: {\n        auswertung_id,\n        erfasst_am,\n        projekt: g.projekt,\n        gewerk: g.gewerk,\n        angebot_id: k.angebot_id,\n        anbieter: a.anbieter,\n        angebotsdatum: a.angebotsdatum,\n        datei_name: a.datei_name,\n        leistungsumfang: a.leistungsumfang,\n        gesamtpreis: a.gesamtpreis ?? '',\n        waehrung: a.waehrung,\n        preisbasis: a.preisbasis,\n        preisart: a.preisart,\n        abweichung_median_prozent: k.abweichung_median_prozent ?? '',\n        ausfuehrungszeitraum: a.ausfuehrungszeitraum,\n        enthalten: txt(a.enthalten),\n        ausschluesse: txt(a.ausschluesse),\n        zusatzkosten_risiken: txt(a.zusatzkosten_risiken),\n        rang: b.rang ?? '',\n        ki_einstufung: b.einstufung || 'nicht bewertet',\n        staerken: txt(b.staerken),\n        schwaechen: txt(b.schwaechen),\n        auffaelligkeiten: txt([...(b.auffaelligkeiten || []), ...k.auffaelligkeiten_regelbasiert]),\n        ki_begruendung: b.kurzbegruendung || '',\n        datenstatus: a.datenstatus,\n        fehlende_angaben: txt(a.fehlende_angaben),\n      },\n    });\n  }\n});\nconst key = (r) => `${r.json.projekt}|${r.json.gewerk}|${String(r.json.rang).padStart(3, '0')}`;\nreturn out.sort((x, y) => key(x).localeCompare(key(y)));"
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const toIsoDate = (v) => {\n  const s = String(v || '').trim();\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(s)) return s.slice(0, 10);\n  const m = s.match(/^(\\d{1,2})\\.(\\d{1,2})\\.(\\d{2,4})$/);\n  if (m) {\n    const y = m[3].length === 2 ? '20' + m[3] : m[3];\n    return y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');\n  }\n  return '';\n};\nconst euro = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : 'Preis unklar');\n\nconst out = [];\nfor (const item of $input.all()) {\n  const o = item.json.output || {};\n  const hatPositionen = Array.isArray(o.positionen) && o.positionen.length > 0;\n  const positionen = hatPositionen\n    ? o.positionen\n    : [{ leistung: 'Pauschalangebot (keine Einzelpositionen)', preis: typeof o.gesamtpreis === 'number' ? o.gesamtpreis : null }];\n  for (const p of positionen) {\n    out.push({\n      json: {\n        anbieter: o.anbieter || 'unbekannt',\n        datum: toIsoDate(o.datum),\n        projekt: o.projekt || '',\n        leistung: p.leistung || '',\n        preis: typeof p.preis === 'number' ? p.preis : null,\n        position_text: (p.leistung || 'ohne Bezeichnung') + ': ' + euro(p.preis),\n        gesamtpreis: typeof o.gesamtpreis === 'number' ? o.gesamtpreis : null,\n        hinweise: o.hinweise || '',\n      },\n    });\n  }\n}\nreturn out;",
+        "notice": ""
       },
+      "name": "Positionen aufteilen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3184,
-        208
-      ],
-      "name": "Angebote + Bewertung"
+        2848,
+        -384
+      ]
     },
     {
       "parameters": {
-        "operation": "append",
-        "documentId": {
+        "authentication": "apiKey",
+        "notionNotice": "",
+        "Credentials": "",
+        "resource": "databasePage",
+        "operation": "create",
+        "dataSourceId": {
           "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Angebotsauswertung Müller & Partner"
+          "mode": "id",
+          "value": "HIER-NOTION-ID-EINTRAGEN",
+          "cachedResultName": "Angebotszusammenfassung"
         },
-        "sheetName": {
-          "__rl": true,
-          "mode": "name",
-          "value": "Angebote"
+        "title": "={{ $json.anbieter }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Projekt|rich_text",
+              "type": "={{$parameter[\"&key\"].split(\"|\").pop()}}",
+              "title": "",
+              "textContent": "={{ $json.projekt }}",
+              "numberValue": 0,
+              "checkboxValue": false,
+              "selectValue": "",
+              "statusValue": "",
+              "multiSelectValue": "",
+              "urlValue": "",
+              "ignoreIfEmpty": false,
+              "emailValue": "",
+              "phoneValue": "",
+              "peopleValue": [],
+              "relationValue": [],
+              "range": false,
+              "includeTime": true,
+              "date": "",
+              "dateStart": "",
+              "dateEnd": "",
+              "timezone": "default",
+              "fileUrls": {}
+            },
+            {
+              "key": "Datum|date",
+              "type": "={{$parameter[\"&key\"].split(\"|\").pop()}}",
+              "title": "",
+              "textContent": "",
+              "numberValue": 0,
+              "checkboxValue": false,
+              "selectValue": "",
+              "statusValue": "",
+              "multiSelectValue": "",
+              "urlValue": "",
+              "ignoreIfEmpty": false,
+              "emailValue": "",
+              "phoneValue": "",
+              "peopleValue": [],
+              "relationValue": [],
+              "range": false,
+              "includeTime": false,
+              "date": "={{ $json.datum }}",
+              "dateStart": "",
+              "dateEnd": "",
+              "timezone": "default",
+              "fileUrls": {}
+            },
+            {
+              "key": "Gesamtpreis|number",
+              "type": "={{$parameter[\"&key\"].split(\"|\").pop()}}",
+              "title": "",
+              "textContent": "",
+              "numberValue": "={{ $json.gesamtpreis }}",
+              "checkboxValue": false,
+              "selectValue": "",
+              "statusValue": "",
+              "multiSelectValue": "",
+              "urlValue": "",
+              "ignoreIfEmpty": false,
+              "emailValue": "",
+              "phoneValue": "",
+              "peopleValue": [],
+              "relationValue": [],
+              "range": false,
+              "includeTime": true,
+              "date": "",
+              "dateStart": "",
+              "dateEnd": "",
+              "timezone": "default",
+              "fileUrls": {}
+            },
+            {
+              "key": "Hinweise|rich_text",
+              "type": "={{$parameter[\"&key\"].split(\"|\").pop()}}",
+              "title": "",
+              "textContent": "={{ $json.hinweise }}",
+              "numberValue": 0,
+              "checkboxValue": false,
+              "selectValue": "",
+              "statusValue": "",
+              "multiSelectValue": "",
+              "urlValue": "",
+              "ignoreIfEmpty": false,
+              "emailValue": "",
+              "phoneValue": "",
+              "peopleValue": [],
+              "relationValue": [],
+              "range": false,
+              "includeTime": true,
+              "date": "",
+              "dateStart": "",
+              "dateEnd": "",
+              "timezone": "default",
+              "fileUrls": {}
+            },
+            {
+              "key": "Position|rich_text",
+              "type": "={{$parameter[\"&key\"].split(\"|\").pop()}}",
+              "title": "",
+              "textContent": "={{ $json.position_text }}",
+              "numberValue": 0,
+              "checkboxValue": false,
+              "selectValue": "",
+              "statusValue": "",
+              "multiSelectValue": "",
+              "urlValue": "",
+              "ignoreIfEmpty": false,
+              "emailValue": "",
+              "phoneValue": "",
+              "peopleValue": [],
+              "relationValue": [],
+              "range": false,
+              "includeTime": true,
+              "date": "",
+              "dateStart": "",
+              "dateEnd": "",
+              "timezone": "default",
+              "fileUrls": {}
+            }
+          ]
         },
-        "columns": {
-          "mappingMode": "autoMapInputData",
-          "value": {},
-          "matchingColumns": [],
-          "schema": []
+        "contentType": "blockUi",
+        "blockUi": {},
+        "options": {},
+        "simple": true
+      },
+      "name": "Position in Notion speichern",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        3072,
+        -384
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateIndividualFields",
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "output",
+              "renameField": true,
+              "outputFieldName": "angebote"
+            }
+          ]
         },
+        "options": {}
+      },
+      "name": "Angebote sammeln",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2864,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Hier sind {{ $json.angebote.length }} Angebote im JSON-Format:\n\n{{ JSON.stringify($json.angebote, null, 2) }}",
+        "hasOutputParser": false,
+        "needsFallback": false,
         "options": {
-          "handlingExtraData": "insertInNewColumn"
+          "systemMessage": "Du bist Einkaufsassistent eines Bauunternehmens. Du erhältst mehrere Angebote im JSON-Format.\nErstelle genau einen Angebotsvergleich über alle Angebote in reinem Markdown (ohne Codeblock).\nAufbau:\n## Übersicht\nTabelle mit Anbieter, Projekt, Datum, Gesamtpreis, Anzahl Positionen.\n## Vergleichbare Leistungen\nGleichartige Positionen verschiedener Anbieter nebeneinander, auch wenn sie unterschiedlich formuliert sind.\n## Zusammenfassung je Angebot\nJe Anbieter zwei bis drei Sätze zu Leistungsumfang, Preis, Hinweisen und Ausführungszeitraum.\n## Auffälligkeiten\nUngewöhnlich niedrige oder hohe Preise, fehlende oder unklare Angaben, Ausschlüsse und Zusatzkosten.\n## Empfehlung\nEine begründete Empfehlung. Betreffen die Angebote verschiedene Gewerke, weise ausdrücklich darauf hin, dass sie nicht direkt vergleichbar sind, und empfiehlt je Gewerk.\nRegeln: Erfinde keine Informationen. Fehlende Angaben als „nicht angegeben“ kennzeichnen. Beträge im Format 1.234,56 €."
         }
       },
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.7,
+      "name": "Angebote vergleichen",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
       "position": [
-        3408,
-        208
-      ],
-      "name": "Sheet: Angebote"
+        3088,
+        640
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Punkt 5c: Bericht je Projekt + Gewerk (Kennzahlen, Zusammenfassung, Entscheidungsgrundlage)\nconst auswertung_id = $execution.id;\nconst erfasst_am = $now.toFormat('yyyy-MM-dd HH:mm');\nconst gruppen = $('Kennzahlen je Gewerk').all();\nconst eur = (n) => (typeof n === 'number' ? n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '–');\n\nreturn $input.all().map((item, i) => {\n  const g = gruppen[i].json;\n  const k = g.kennzahlen;\n  const ki = item.json.output || {};\n  const bew = (ki.bewertungen || []).slice().sort((a, b) => a.rang - b.rang);\n  const guenstigstes = g.angebote.filter((a) => a.gesamtpreis === k.preis_min).map((a) => a.anbieter).join(', ');\n  const abraten = bew.filter((b) => b.einstufung === 'abraten').map((b) => b.anbieter).join(', ');\n  const ranking = bew.map((b) => `${b.rang}. ${b.anbieter} (${b.einstufung})`).join(' | ');\n  const bericht = [\n    `Projekt: ${g.projekt} – Gewerk: ${g.gewerk}`,\n    `${k.anzahl_angebote} Angebot(e), Preisspanne ${eur(k.preis_min)} bis ${eur(k.preis_max)}, Median ${eur(k.preis_median)}.`,\n    ki.zusammenfassung || '',\n    `Empfehlung: ${ki.empfehlung_anbieter || '–'} – ${ki.empfehlung_begruendung || ''}`,\n    abraten ? `Abzuraten: ${abraten}.` : '',\n    `Ranking: ${ranking}`,\n  ].filter(Boolean).join('\\n');\n\n  return {\n    json: {\n      auswertung_id,\n      erfasst_am,\n      projekt: g.projekt,\n      gewerk: g.gewerk,\n      anzahl_angebote: k.anzahl_angebote,\n      preis_min: k.preis_min ?? '',\n      preis_max: k.preis_max ?? '',\n      preis_median: k.preis_median ?? '',\n      preis_durchschnitt: k.preis_durchschnitt ?? '',\n      guenstigster_anbieter: guenstigstes,\n      empfohlener_anbieter: ki.empfehlung_anbieter || '',\n      empfehlung_begruendung: ki.empfehlung_begruendung || '',\n      abzuraten: abraten,\n      ranking,\n      bericht,\n    },\n  };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3184,
-        400
-      ],
-      "name": "Bericht je Gewerk"
-    },
-    {
-      "parameters": {
-        "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Angebotsauswertung Müller & Partner"
-        },
-        "sheetName": {
-          "__rl": true,
-          "mode": "name",
-          "value": "Bericht"
-        },
-        "columns": {
-          "mappingMode": "autoMapInputData",
-          "value": {},
-          "matchingColumns": [],
-          "schema": []
-        },
+        "notice": "",
+        "model": "openai/gpt-oss-120b",
         "options": {
-          "handlingExtraData": "insertInNewColumn"
+          "maxTokensToSample": 6000,
+          "temperature": 0.2
         }
       },
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.7,
+      "name": "Groq Modell Vergleich",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
       "position": [
-        3408,
-        400
-      ],
-      "name": "Sheet: Bericht"
+        3088,
+        864
+      ]
     },
     {
       "parameters": {
+        "authentication": "apiKey",
+        "notionNotice": "",
+        "Credentials": "",
+        "resource": "page",
+        "operation": "updateMarkdown",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "HIER-NOTION-ID-EINTRAGEN",
+          "cachedResultName": "Angebotsanalyse"
+        },
+        "markdownUpdateType": "replace_content",
+        "markdown": "=# Angebotsvergleich vom {{ $now.toFormat(\"dd.MM.yyyy HH:mm\") }}\n\nAutomatisch erstellt durch n8n. Grundlage: {{ $(\"Angebote sammeln\").item.json.angebote.length }} Angebote.\n\n{{ $json.output }}"
+      },
+      "name": "Bericht in Angebotsanalyse schreiben",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 3,
+      "position": [
+        3344,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Angebotsauswertung mit Notion (Stand 28.09.2026)\nPunkt 1 und 2: Einlesen und Extraktion (je Angebot ein JSON)\nPunkt 5a: je Position eine Zeile in Notion „Angebotszusammenfassung“\nPunkt 3 und 4: Aggregate sammelt alle Angebote, der Vergleichs-Agent erstellt den Bericht\nPunkt 5b: Bericht ersetzt den Inhalt der Notion-Seite „Angebotsanalyse“\n\n**Vor dem ersten Lauf:** Notion-Credential in beiden Notion-Nodes auswählen und Datenbank sowie Seite in Notion für die Integration freigeben.\n\n**Datenschutz:** Angebotstexte gehen an Google Gemini (OCR) und Groq (Extraktion, Vergleich). Nur Übungsangebote verwenden.",
+        "height": 340,
+        "width": 620,
+        "color": 4
+      },
+      "name": "Notiz",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "triggerNotice": "",
+        "operation": "page",
+        "defineForm": "fields",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Sollen diese Angebote ausgewertet werden?",
+              "fieldType": "radio",
+              "fieldName": "auswerten",
+              "defaultValue": "",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Ja"
+                  },
+                  {
+                    "option": "Nein"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "limitWaitTime": false,
+        "options": {
+          "formTitle": "Angebote prüfen",
+          "formDescription": "=Folgende {{ Object.keys($('Angebote hochladen').first().binary || {}).length }} Dateien wurden hochgeladen:<br><br>{{ Object.values($('Angebote hochladen').first().binary || {}).map(b => b.fileName).join('<br>') }}<br><br>Erst nach deiner Bestätigung gehen die Angebote an Gemini, Groq und Notion.",
+          "buttonLabel": "Bestätigen"
+        }
+      },
+      "name": "Angebote prüfen",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        -224,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bestaetigt",
+              "leftValue": "={{ $json.auswerten }}",
+              "rightValue": "Ja",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "name": "Auswertung bestätigt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "triggerNotice": "",
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Auswertung gestartet",
+        "completionMessage": "Die Angebote werden jetzt ausgewertet. Die Positionen erscheinen in Notion unter „Angebotszusammenfassung“, der Vergleich auf der Seite „Angebotsanalyse“.",
+        "limitWaitTime": false,
+        "options": {}
+      },
+      "name": "Auswertung gestartet",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "triggerNotice": "",
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Abgebrochen",
+        "completionMessage": "Es wurde nichts ausgewertet und nichts gespeichert.",
+        "limitWaitTime": false,
+        "options": {}
+      },
+      "name": "Auswertung abgebrochen",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
         "numberInputs": 3
       },
+      "name": "Alle Angebote zusammenführen",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        1568,
-        192
-      ],
-      "name": "Alle Texte sammeln"
+        1808,
+        304
+      ]
     }
   ],
   "connections": {
-    "Angebote hochladen": {
-      "main": [
-        [
-          {
-            "node": "Dateien aufteilen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Dateien aufteilen": {
       "main": [
         [
@@ -584,17 +724,6 @@
         [
           {
             "node": "Scan per OCR lesen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "PDF-Text lesen": {
-      "main": [
-        [
-          {
-            "node": "Alle Texte sammeln",
             "type": "main",
             "index": 0
           }
@@ -645,40 +774,23 @@
         ]
       ]
     },
-    "DOCX-Text saeubern": {
-      "main": [
-        [
-          {
-            "node": "Alle Texte sammeln",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Scan per OCR lesen": {
-      "main": [
-        [
-          {
-            "node": "Alle Texte sammeln",
-            "type": "main",
-            "index": 2
-          }
-        ]
-      ]
-    },
     "Angebotsdaten extrahieren": {
       "main": [
         [
           {
-            "node": "Werte normalisieren",
+            "node": "Positionen aufteilen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Angebote sammeln",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Gemini Modell": {
+    "Groq Modell Extraktion": {
       "ai_languageModel": [
         [
           {
@@ -689,105 +801,140 @@
         ]
       ]
     },
-    "Werte normalisieren": {
-      "main": [
-        [
-          {
-            "node": "Positionen auflösen",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Kennzahlen je Gewerk",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Positionen auflösen": {
-      "main": [
-        [
-          {
-            "node": "Sheet: Positionen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kennzahlen je Gewerk": {
-      "main": [
-        [
-          {
-            "node": "Angebote vergleichen (KI)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gemini Modell Vergleich": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Angebote vergleichen (KI)",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Vergleichs-Format": {
+    "Angebotsschema": {
       "ai_outputParser": [
         [
           {
-            "node": "Angebote vergleichen (KI)",
+            "node": "Angebotsdaten extrahieren",
             "type": "ai_outputParser",
             "index": 0
           }
         ]
       ]
     },
-    "Angebote vergleichen (KI)": {
+    "Positionen aufteilen": {
       "main": [
         [
           {
-            "node": "Angebote + Bewertung",
+            "node": "Position in Notion speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Angebote sammeln": {
+      "main": [
+        [
+          {
+            "node": "Angebote vergleichen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Angebote vergleichen": {
+      "main": [
+        [
+          {
+            "node": "Bericht in Angebotsanalyse schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Modell Vergleich": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Angebote vergleichen",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Angebote hochladen": {
+      "main": [
+        [
+          {
+            "node": "Angebote prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Angebote prüfen": {
+      "main": [
+        [
+          {
+            "node": "Auswertung bestätigt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auswertung bestätigt?": {
+      "main": [
+        [
+          {
+            "node": "Auswertung gestartet",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Bericht je Gewerk",
+            "node": "Dateien aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auswertung abgebrochen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Angebote + Bewertung": {
+    "PDF-Text lesen": {
       "main": [
         [
           {
-            "node": "Sheet: Angebote",
+            "node": "Alle Angebote zusammenführen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Bericht je Gewerk": {
+    "DOCX-Text saeubern": {
       "main": [
         [
           {
-            "node": "Sheet: Bericht",
+            "node": "Alle Angebote zusammenführen",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
     },
-    "Alle Texte sammeln": {
+    "Scan per OCR lesen": {
+      "main": [
+        [
+          {
+            "node": "Alle Angebote zusammenführen",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Alle Angebote zusammenführen": {
       "main": [
         [
           {
@@ -800,9 +947,7 @@
     }
   },
   "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": true
+    "executionOrder": "v1"
   },
   "pinData": {}
 }
