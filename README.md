@@ -66,7 +66,7 @@ Der Workflow trifft keine Vergabeentscheidung. Er liefert eine Empfehlung mit Be
 
 ## Screenshots
 
-Workflow-Ansicht der Vorversion mit Upload-Formular. Der Aufbau ab „Dateien aufteilen“ ist gleich geblieben, den aktuellen Gesamtablauf zeigt das Diagramm oben.
+Workflow in n8n: links Start, Ordner lesen und Freigabe, Mitte Texterkennung je Dateityp, rechts Extraktion, Vergleich und Ausgabe nach Notion und in den Ordner.
 
 ![Workflow in n8n](workflow.png)
 
