@@ -1,6 +1,6 @@
 # Automatisierte Angebotsauswertung für ein Bauunternehmen (n8n + KI)
 
-Ein n8n-Workflow, der Angebote von Subunternehmern direkt aus einem Ordner auf der Festplatte liest (PDF, Word, Scan oder Foto), die Inhalte per KI extrahiert, jede Position in einer Notion-Datenbank speichert und einen begründeten Angebotsvergleich erstellt. Der Bericht landet auf einer Notion-Seite und zusätzlich als Datei wieder im Ordner.
+Ein n8n-Workflow, der Angebote von Subunternehmern direkt aus einem Ordner auf der Festplatte liest (PDF, Word, Scan oder Foto), die Inhalte per KI extrahiert, jede Position in einer Notion-Datenbank speichert und einen begründeten Angebotsvergleich erstellt. Der Bericht landet auf einer Notion-Seite und zusätzlich als Datei wieder im Ordner. Außerdem werden die Angebote in eine lokale Wissensbasis (RAG) geschrieben, zu der man in einem Chat Fragen stellen kann.
 
 Entstanden im Rahmen der Weiterbildung „KI-Integrationsmanager:in (IHK)“ am Smart Future Campus. Kunde ist die fiktive Müller & Partner Bau GmbH aus einer Kursaufgabe.
 
@@ -13,6 +13,7 @@ Ein mittelständisches Bauunternehmen erhält pro Projekt 5 bis 15 Angebote von 
 3. Alles in ein einheitliches, vergleichbares Format bringen
 4. Angebote vergleichen und eine begründete Empfehlung geben
 5. Ergebnisse strukturiert speichern und einen Bericht erzeugen
+6. Erweiterung: Fragen zu den Angeboten per Chat beantworten (RAG mit Simple Vector Store)
 
 ## Verwendete Tools
 
@@ -21,6 +22,7 @@ Ein mittelständisches Bauunternehmen erhält pro Projekt 5 bis 15 Angebote von 
 - Groq, Modell `openai/gpt-oss-120b`: Datenextraktion und Angebotsvergleich (KI-Agent mit Structured Output Parser)
 - Google Gemini `gemini-3.5-flash`: Texterkennung (OCR) für Scans und Fotos
 - Notion: Datenbank „Angebotszusammenfassung“ und Seite „Angebotsanalyse“
+- Ollama (lokal): `qwen3-embedding:0.6b` für Embeddings, `qwen3:8b` als Chatmodell, Simple Vector Store, Chat Trigger, AI Agent
 - JavaScript im Code-Node
 
 ## Workflow
@@ -48,6 +50,9 @@ flowchart TD
     M --> P[Angebote sammeln] --> Q[Pause 60 s] --> R[KI: Angebote vergleichen]
     R --> S[(Notion: Seite Angebotsanalyse)]
     R --> T[Bericht als Datei] --> U[Write File to Disk: /files/ergebnis/*.md]
+    L --> V[(Simple Vector Store: mueller_angebote)]
+    W[Chat: Fragen zu den Angeboten] --> Y[KI-Agent: Ollama qwen3:8b]
+    Y -- Tool --> Z[Angebote durchsuchen] --> V
 ```
 
 **Ablauf Schritt für Schritt**
@@ -62,13 +67,34 @@ flowchart TD
 8. **Vergleich**: Nach einer Pause wegen des Groq-Limits erstellt ein zweiter KI-Agent den Bericht mit Übersicht, vergleichbaren Leistungen, Auffälligkeiten und einer Empfehlung je Gewerk.
 9. **Ergebnis**: Der Bericht ersetzt den Inhalt der Notion-Seite „Angebotsanalyse“ und wird als Markdown-Datei nach `/files/ergebnis/` geschrieben. Oben steht, wie viele Dateien ausgewertet wurden und welche nicht gelesen werden konnten.
 
+10. **Wissensbasis speichern (RAG)**: Parallel zur Extraktion werden die Angebotstexte mit dem lokalen Embedding-Modell `qwen3-embedding:0.6b` in Vektoren umgewandelt und im Simple Vector Store (Memory Key `mueller_angebote`) gespeichert. Bei jedem Lauf wird der Speicher vorher geleert.
+11. **Chat**: Über „Open chat“ stellt man Fragen. Ein KI-Agent mit dem lokalen Modell `qwen3:8b` durchsucht die Wissensbasis (8 Treffer) und antwortet mit Anbieter, Datei und wörtlichem Zitat.
+
 Der Workflow trifft keine Vergabeentscheidung. Er liefert eine Empfehlung mit Begründung, entscheiden muss der Einkauf.
 
 ## Screenshots
 
-Workflow in n8n: links Start, Ordner lesen und Freigabe, Mitte Texterkennung je Dateityp, rechts Extraktion, Vergleich und Ausgabe nach Notion und in den Ordner.
+Workflow in n8n mit Notizen je Abschnitt: 1 Einlesen und Freigabe, 2 Text gewinnen, 3 Extraktion und Vergleich, 4 Wissensbasis (RAG), 5 Chat.
 
 ![Workflow in n8n](workflow.png)
+
+## RAG-Chat: Testergebnisse (28.10.2026)
+
+Getestet mit den 15 fiktiven Übungsangeboten. Die Antworten wurden mit den Original-Angeboten abgeglichen.
+
+| Frage | `llama3.2:3b`, 4 Treffer | `qwen3:8b`, 8 Treffer, strenge Regeln |
+|---|---|---|
+| Welche Sanitär-Angebote schließen Fliesenarbeiten aus? | 3 von 4 richtig. Ein Anbieter erfunden (Sanitär Profi). | Alle 3 richtig (Schmidt, Keller, Sanitär & Co), je mit Zitat. |
+| Was kostet das Angebot von Elektro Stark? | Richtig: 13.750 €, 4 bis 6 Wochen, Datei angegeben. | nicht erneut getestet |
+| Welcher Anbieter rechnet nach Aufwand ab? | Falsch. Drei Anbieter genannt, keiner davon richtig. | Richtig: Bauleistungen Richter, mit Zitat „Eine genaue Abrechnung erfolgt nach tatsächlichem Aufwand.“ |
+| Antwortzeit | ca. 20 s | ca. 60 bis 75 s |
+
+**Was geändert wurde:**
+- Chatmodell von `llama3.2:3b` auf `qwen3:8b`, Denkmodus aus, Temperatur 0
+- Treffer aus dem Vector Store von 4 auf 8, damit bei Fragen wie „welche alle …“ kein Angebot fehlt
+- Systemprompt: Ein Angebot zählt nur als Treffer, wenn die Information wörtlich darin steht. Jede Aussage mit Anbieter, Datei und Zitat.
+
+**Ergebnis:** Die Suche fand von Anfang an die richtigen Dokumente. Fehler entstanden beim kleinen Sprachmodell, das Namen und Inhalte vermischt hat. Mit dem größeren Modell und der Zitatpflicht sind die Antworten richtig und nachprüfbar. Die Antworten bleiben trotzdem eine Hilfe, die der Einkauf prüft.
 
 ## Herausforderungen
 
@@ -77,6 +103,9 @@ Workflow in n8n: links Start, Ordner lesen und Freigabe, Mitte Texterkennung je 
 - **Ausfälle der OCR**: Gemini war zeitweise überlastet, ein Modell war nicht mehr verfügbar. Lösung: aktuelles Modell, Wiederholung bei Fehler und Weiterlaufen ohne die betroffene Datei. Der Bericht nennt die nicht gelesenen Dateien.
 - **Rate Limit bei Groq**: Der kostenlose Zugang erlaubt 8.000 Tokens pro Minute. Lösung: Angebote einzeln mit 8 Sekunden Abstand extrahieren und vor dem Vergleich 60 Sekunden pausieren. Ein Lauf dauert dadurch etwa 4 Minuten.
 - **Strenges JSON-Schema**: Groq lehnte Antworten ab, wenn ein Preis fehlte. Das Schema erlaubt jetzt ausdrücklich `null`.
+- **Ollama aus Docker erreichen**: n8n im Container erreicht Ollama auf dem PC nicht über `localhost`, sondern über `http://host.docker.internal:11434`.
+- **Erfundene Antworten im Chat**: Das kleine Modell `llama3.2:3b` hat Anbieter verwechselt. Lösung siehe Testergebnisse.
+- **Flüchtiger Speicher**: Der Simple Vector Store liegt nur im Arbeitsspeicher. Nach einem Neustart von n8n muss die Wissensbasis neu befüllt werden. Für den Dauerbetrieb ist eine Vektor-Datenbank wie Supabase vorgesehen.
 
 ## Lernerfahrungen
 
@@ -84,6 +113,7 @@ Workflow in n8n: links Start, Ordner lesen und Freigabe, Mitte Texterkennung je 
 - KI ist stark beim Verstehen unstrukturierter Texte. Format, Prüfung und Speicherung gehören in den Workflow.
 - Kostenlose KI-Zugänge haben Grenzen bei Tempo und Verfügbarkeit. Für den Echtbetrieb gehören ein bezahlter Zugang oder ein lokales Modell in die Kostenplanung.
 - Human in the Loop lässt sich in n8n einfach mit einem Formular und einer If-Abfrage einbauen.
+- Bei RAG entscheidet nicht nur die Suche, sondern auch das Sprachmodell über die Qualität. Zitatpflicht macht Fehler sichtbar und Antworten prüfbar.
 
 ## Einrichtung
 
@@ -95,7 +125,9 @@ Workflow in n8n: links Start, Ordner lesen und Freigabe, Mitte Texterkennung je 
 3. In n8n „Import from File“ und `workflow.json` laden.
 4. Zugangsdaten hinterlegen: Groq in beiden Groq-Nodes, Google Gemini im Node „Scan per OCR lesen“, Notion in beiden Notion-Nodes.
 5. In Notion eine Datenbank „Angebotszusammenfassung“ (Felder: Projekt, Datum, Gesamtpreis, Hinweise, Position) und eine Seite „Angebotsanalyse“ anlegen, für die Integration freigeben und die IDs in den Notion-Nodes eintragen (Platzhalter `HIER-NOTION-ID-EINTRAGEN`).
-6. Workflow ausführen, Formular öffnen, „Ordner einlesen“ und danach „Ja“ bestätigen.
+6. Für den Chat Ollama installieren und die Modelle laden: `ollama pull qwen3-embedding:0.6b` und `ollama pull qwen3:8b`. In n8n einen Ollama-Zugang mit der Base URL `http://host.docker.internal:11434` anlegen und an die drei Ollama-Nodes hängen.
+7. Workflow ausführen, Formular öffnen, „Ordner einlesen“ und danach „Ja“ bestätigen. Dabei wird auch die Wissensbasis befüllt.
+8. Beim Node „Fragen zu den Angeboten“ auf „Open chat“ klicken und Fragen stellen.
 
 Zugangsdaten, Notion-IDs und lokale Pfade sind in der JSON-Datei nicht enthalten.
 
@@ -103,4 +135,5 @@ Zugangsdaten, Notion-IDs und lokale Pfade sind in der JSON-Datei nicht enthalten
 
 - Die Angebotstexte werden an Google Gemini (Texterkennung) und Groq (Extraktion, Vergleich) übertragen. Für den Echtbetrieb sind ein Auftragsverarbeitungsvertrag oder ein lokal betriebenes Modell zu prüfen.
 - Vor der Übertragung bestätigt der Nutzer im Formular, welche Dateien ausgewertet werden.
+- Wissensbasis und Chat laufen vollständig lokal über Ollama. Diese Daten verlassen den Rechner nicht.
 - Getestet wurde nur mit fiktiven Übungsangeboten ohne echte Personen- oder Firmendaten.
