@@ -9,12 +9,12 @@ Testdaten: 15 fiktive Übungsangebote aus dem Kurs (10 PDF, 3 DOCX, 1 Scan, 1 Fo
 | Nr. | Test | Erwartung | Ergebnis | Status |
 |---|---|---|---|---|
 | T1 | Ordner lesen | Alle Dateien aus `/files/Müller_Angebote` werden gefunden | 15 von 15 Dateien, Liste im Prüfformular | ✅ |
-| T2 | Freigabe „Nein“ | Nichts wird gesendet, Lauf wird protokolliert | Test läuft noch | ⏳ |
+| T2 | Freigabe „Nein“ | Nichts wird gesendet, Lauf wird protokolliert | Abbruch nach dem Prüfformular, keine Daten an KI-Dienste oder Notion, Protokollzeile „abgebrochen“ (29.10.2026, 10:03) | ✅ |
 | T3 | Text gewinnen | PDF, DOCX und Bilder werden gelesen | 10 PDF und 3 DOCX immer gelesen. Scan und Foto per OCR, wenn Gemini verfügbar ist | ✅ |
 | T4 | OCR-Ausfall (Fallback) | Lauf läuft weiter, Bericht nennt die nicht gelesene Datei | Gemini überlastet (Fehler 503): Lauf lief mit 14 von 15 Dateien weiter, Bericht wies auf nicht gelesene Dateien hin (Bericht vom 27.10.2026, 20:23). Die Namensliste war dabei noch fehlerhaft und wurde danach korrigiert, siehe unten. | ✅ |
 | T5 | Groq-Limit | Lauf bricht nicht wegen Rate Limit ab | Vorher Abbruch beim 11. Angebot. Nach Staffelung (8 s Abstand, 60 s Pause) alle Läufe durchgelaufen | ✅ |
 | T6 | Vollständiger Lauf | Positionen in Notion, Bericht in Notion und als Datei, Empfehlung vollständig | 15 von 15 Dateien ausgewertet, Bericht mit Empfehlung je Gewerk (Lauf vom 28.10.2026, 21:29) | ✅ |
-| T7 | Protokoll bei „Ja“ | Eine Zeile mit Ergebnis „ausgewertet“ | Test läuft noch | ⏳ |
+| T7 | Protokoll bei „Ja“ | Eine Zeile mit Ergebnis „ausgewertet“ | Vollständiger Lauf mit 15 von 15 Dateien in knapp 5 Minuten, Protokollzeile „ausgewertet“ mit Berichtsdatei und Modellen (29.10.2026, 10:10) | ✅ |
 | T8 | RAG-Chat | Richtige Antworten mit Anbieter, Datei und Zitat | Mit `qwen3:8b` 3 von 3 richtig (siehe unten) | ✅ |
 
 ## Beispielergebnis: Vergleichsbericht (Auszug)
@@ -33,10 +33,12 @@ Prüfung gegen die Originale: Preise und Hinweise stimmen. Die Baufirma Meier (F
 
 ## Beispielergebnis: Protokoll
 
-Datei `protokoll.csv`:
+Datei `protokoll.csv` nach den Tests T2 und T7. Es stehen keine Personendaten darin.
 
 ```
-(wird nach den Testläufen ergänzt)
+zeitpunkt;ergebnis;dateien_gesamt;ausgewertet;nicht_gelesen;freigabe;bemerkung;bericht_datei;ki_modelle
+"2026-10-29 10:03:48";"abgebrochen";"15";"0";"";"Nein";"Test Protokoll: Abbruch";"";"keine (nichts gesendet)"
+"2026-10-29 10:10:39";"ausgewertet";"15";"15";"keine";"Ja";"Test Protokoll";"/files/ergebnis/Angebotsvergleich_2026-10-29_1010.md";"OCR: gemini-3.5-flash | Extraktion und Vergleich: groq gpt-oss-120b | RAG: ollama qwen3-embedding:0.6b"
 ```
 
 ## Beispielergebnis: RAG-Chat

@@ -1,5 +1,5 @@
 {
-  "name": "Angebotsauswertung Bau: Ordner, KI-Vergleich, Notion, RAG-Chat",
+  "name": "Angebotsauswertung Bau: Ordner, KI-Vergleich, Notion, RAG-Chat, Protokoll",
   "nodes": [
     {
       "parameters": {
@@ -977,9 +977,9 @@
     },
     {
       "parameters": {
-        "content": "### 3 Extraktion und Vergleich\nGroq extrahiert je Angebot ein festes JSON (einzeln, 8 s Abstand wegen Free-Tier-Limit). Positionen → Notion. Nach 60 s Pause erstellt Groq den Vergleich → Notion-Seite und Datei in /files/ergebnis.",
+        "content": "### 3 Extraktion, Vergleich und Protokoll\nGroq extrahiert je Angebot ein festes JSON (einzeln, 8 s Abstand wegen Free-Tier-Limit). Positionen → Notion. Nach 60 s Pause erstellt Groq den Vergleich → Notion-Seite und Datei in /files/ergebnis. Zum Schluss eine Zeile in /files/ergebnis/protokoll.csv (auch bei „Nein“).",
         "height": 780,
-        "width": 1360,
+        "width": 1660,
         "color": 4
       },
       "name": "Notiz 3 Auswertung",
@@ -1019,6 +1019,74 @@
         -960,
         384
       ]
+    },
+    {
+      "name": "Protokollzeile (ausgewertet)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        272
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Eine Protokollzeile je Lauf (Nachvollziehbarkeit). Bewusst ohne Personendaten.\nconst q = (v) => '\"' + String(v ?? '').replace(/\"/g, '\"\"').replace(/\\r?\\n/g, ' ') + '\"';\nconst alle = $('Dateien aufteilen').all().map((i) => i.json.datei_name);\nconst gelesen = $('Text vereinheitlichen').all().map((i) => i.json.datei_name);\nconst fehlend = alle.filter((n) => !gelesen.includes(n));\nlet bericht = '';\ntry { bericht = $('Bericht in Ordner schreiben').first().json.fileName; } catch (e) {}\nlet bemerkung = '';\ntry { bemerkung = $('Auswertung starten').first().json.bemerkung || ''; } catch (e) {}\nconst zeile = [\n  $now.toFormat('yyyy-MM-dd HH:mm:ss'),\n  'ausgewertet',\n  alle.length,\n  gelesen.length,\n  fehlend.join(', ') || 'keine',\n  'Ja',\n  bemerkung,\n  bericht,\n  'OCR: gemini-3.5-flash | Extraktion und Vergleich: groq gpt-oss-120b | RAG: ollama qwen3-embedding:0.6b',\n].map(q).join(';') + '\\n';\nconst binary = await this.helpers.prepareBinaryData(Buffer.from(zeile, 'utf8'), 'protokoll.csv', 'text/csv');\nreturn [{ json: { zeile }, binary: { data: binary } }];",
+        "notice": ""
+      }
+    },
+    {
+      "name": "Protokoll schreiben",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        3392,
+        272
+      ],
+      "parameters": {
+        "info": "",
+        "operation": "write",
+        "cloudNotice": "",
+        "fileName": "/files/ergebnis/protokoll.csv",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      }
+    },
+    {
+      "name": "Protokollzeile (abgebrochen)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        176
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Auch abgebrochene Läufe werden protokolliert. Bewusst ohne Personendaten.\nconst q = (v) => '\"' + String(v ?? '').replace(/\"/g, '\"\"').replace(/\\r?\\n/g, ' ') + '\"';\nlet anzahl = 0;\ntry { anzahl = $('Dateiliste').first().json.anzahl; } catch (e) {}\nlet bemerkung = '';\ntry { bemerkung = $('Auswertung starten').first().json.bemerkung || ''; } catch (e) {}\nconst zeile = [\n  $now.toFormat('yyyy-MM-dd HH:mm:ss'),\n  'abgebrochen',\n  anzahl,\n  0,\n  '',\n  'Nein',\n  bemerkung,\n  '',\n  'keine (nichts gesendet)',\n].map(q).join(';') + '\\n';\nconst binary = await this.helpers.prepareBinaryData(Buffer.from(zeile, 'utf8'), 'protokoll.csv', 'text/csv');\nreturn [{ json: { zeile }, binary: { data: binary } }];",
+        "notice": ""
+      }
+    },
+    {
+      "name": "Protokoll schreiben (abgebrochen)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        176
+      ],
+      "parameters": {
+        "info": "",
+        "operation": "write",
+        "cloudNotice": "",
+        "fileName": "/files/ergebnis/protokoll.csv",
+        "dataPropertyName": "data",
+        "options": {
+          "append": true
+        }
+      }
     }
   ],
   "connections": {
@@ -1213,6 +1281,11 @@
             "node": "Auswertung abgebrochen",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Protokollzeile (abgebrochen)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1399,6 +1472,39 @@
           {
             "node": "Angebots-Assistent",
             "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bericht in Ordner schreiben": {
+      "main": [
+        [
+          {
+            "node": "Protokollzeile (ausgewertet)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Protokollzeile (ausgewertet)": {
+      "main": [
+        [
+          {
+            "node": "Protokoll schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Protokollzeile (abgebrochen)": {
+      "main": [
+        [
+          {
+            "node": "Protokoll schreiben (abgebrochen)",
+            "type": "main",
             "index": 0
           }
         ]
