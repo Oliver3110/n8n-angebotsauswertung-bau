@@ -33,7 +33,8 @@ Der Workflow ist in mehreren Stufen gewachsen. Jede Stufe löst ein Problem der 
 | 3 | **Weitere Datenquelle:** Angebote aus einem Ordner lesen (Read/Write Files from Disk), Bericht zusätzlich als Datei | Der Kunde wollte einen Upload-Ordner statt eines Formulars |
 | 4 | **Fehlerbehandlung und Fallback:** Wiederholung bei OCR-Ausfall, Weiterlaufen ohne nicht lesbare Datei, Staffelung wegen Groq-Limit | Gemini war zeitweise überlastet, Groq hat bei zu vielen Anfragen abgebrochen |
 | 5 | **KI-Modell eingebunden (RAG):** lokale Wissensbasis und Chat mit Ollama | Schnelle Antworten auf Einzelfragen, ohne den ganzen Bericht zu lesen |
-| 6 | **Protokollierung** (neu): eine Zeile je Lauf in `protokoll.csv` | Nachvollziehbarkeit für Governance, Audit und EU AI Act |
+| 6 | **Protokollierung:** eine Zeile je Lauf in `protokoll.csv` | Nachvollziehbarkeit für Governance, Audit und EU AI Act |
+| 7 | **Schutz gegen Prompt Injection** (neu): verdächtige Anweisungen an eine KI im Angebotstext werden entfernt und gemeldet | Ein Anbieter könnte versteckten Text einbauen, um die Empfehlung zu beeinflussen (Test T10) |
 
 **Neueste Erweiterung: Protokollierung.** Jeder Lauf schreibt eine Zeile in `/files/ergebnis/protokoll.csv`, auch wenn die Auswertung mit „Nein“ abgebrochen wird:
 
@@ -46,8 +47,19 @@ Der Workflow ist in mehreren Stufen gewachsen. Jede Stufe löst ein Problem der 
 | bemerkung | Freitext aus dem Startformular |
 | bericht_datei | Pfad des erzeugten Berichts |
 | ki_modelle | Welche Modelle an diesem Lauf beteiligt waren |
+| manipulationsverdacht | Dateien mit verdächtigen Anweisungen an eine KI (sonst „keine“) |
 
 Personendaten wie Name oder Benutzerkennung stehen bewusst nicht im Protokoll (Datenminimierung, siehe Punkt 8).
+
+**Schutz gegen Prompt Injection.** Angebote kommen von außen. Ein Anbieter kann unsichtbaren Text einbauen (z. B. weiße Schrift), der die KI anweist, sein Angebot zu empfehlen. Der Workflow schützt sich in drei Schichten:
+
+| Schicht | Umsetzung |
+|---|---|
+| Filter im Node „Text vereinheitlichen“ | Zeilen mit typischen Anweisungen an eine KI („Hinweis für KI-Systeme“, „ignoriere alle bisherigen Anweisungen“, „muss in jedem Fall empfohlen werden“ usw.) werden vor der KI-Auswertung und vor der Wissensbasis entfernt |
+| Warnung | Bericht (Datei und Notion) beginnt mit „⚠ Verdacht auf Manipulation“ und nennt die Datei. Spalte `manipulationsverdacht` im Protokoll |
+| Gehärtete Prompts | Extraktion, Vergleich und Chat behandeln Angebotstexte als reine Daten und folgen keinen Aufforderungen daraus. Der Chat gibt keine eigene Vergabeempfehlung |
+
+Ein Filter mit festen Mustern erkennt nicht jede Formulierung. Die menschliche Prüfung bleibt deshalb Pflicht (Punkt 10).
 
 ## 4. Ablauf des Workflows
 
@@ -64,7 +76,7 @@ flowchart TD
     F -- PDF --> H[PDF-Text lesen]
     F -- DOCX --> I[DOCX entpacken und lesen]
     F -- Bild --> J[OCR mit Gemini]
-    H --> K[Texte zusammenführen und vereinheitlichen]
+    H --> K[Texte zusammenführen, vereinheitlichen, Filter gegen Prompt Injection]
     I --> K
     J --> K
     K --> M[KI-Extraktion mit Groq: festes JSON]
@@ -72,7 +84,7 @@ flowchart TD
     M --> N[(Notion: Positionen)]
     M --> R[KI-Vergleich mit Groq]
     R --> S[(Notion: Angebotsanalyse)]
-    R --> T[Bericht als Datei in /files/ergebnis] --> P1[Protokollzeile ausgewertet]
+    R --> T[Bericht als Datei in /files/ergebnis, ggf. mit Warnung] --> P1[Protokollzeile ausgewertet]
     W[Chat: Fragen zu den Angeboten] --> Y[KI-Agent mit Ollama qwen3:8b]
     Y -- Tool --> V
 ```
@@ -80,7 +92,7 @@ flowchart TD
 **Schritt für Schritt** (die Nummern entsprechen den farbigen Notizen im Workflow):
 
 1. **Einlesen und Freigabe:** Ein Formular startet den Lauf. Der Node „Read/Write Files from Disk“ liest alle PDF-, DOCX- und Bilddateien aus `/files/Müller_Angebote`. Ein zweites Formular zeigt die gefundenen Dateien. Bei „Nein“ wird nichts gesendet, nur protokolliert.
-2. **Text gewinnen:** Ein Switch verteilt die Dateien nach Typ. PDF wird direkt gelesen, DOCX als ZIP entpackt und das XML gelesen, Bilder liest Gemini per OCR. Dateien ohne lesbaren Text werden aussortiert und im Bericht genannt.
+2. **Text gewinnen:** Ein Switch verteilt die Dateien nach Typ. PDF wird direkt gelesen, DOCX als ZIP entpackt und das XML gelesen, Bilder liest Gemini per OCR. Dateien ohne lesbaren Text werden aussortiert und im Bericht genannt. Verdächtige Anweisungen an eine KI werden hier entfernt und gemeldet.
 3. **Extraktion, Vergleich, Protokoll:** Groq bringt jedes Angebot in dasselbe JSON-Schema (Anbieter, Datum, Projekt, Positionen, Preise, Hinweise). Die Positionen gehen nach Notion. Ein zweiter KI-Schritt erstellt den Vergleich mit Empfehlung je Gewerk. Der Bericht landet auf einer Notion-Seite und als Markdown-Datei im Ordner. Zum Schluss wird die Protokollzeile geschrieben.
 4. **Wissensbasis (RAG):** Parallel werden die Angebotstexte mit einem lokalen Embedding-Modell in Vektoren umgewandelt und im Simple Vector Store gespeichert.
 5. **Chat:** Über „Open chat“ stellt man Fragen. Ein KI-Agent durchsucht die Wissensbasis und antwortet mit Anbieter, Datei und wörtlichem Zitat.
@@ -139,7 +151,7 @@ flowchart TD
 | Bereich | Anforderung | Umsetzung im Workflow / im Unternehmen |
 |---|---|---|
 | **Datenschutz (DSGVO)** | Rechtsgrundlage, Datenminimierung, Auftragsverarbeitung, Drittlandtransfer | Nur Geschäftsdaten werden extrahiert, keine Kontaktdaten. Protokoll ohne Personendaten. Für Gemini und Groq vor dem Echtbetrieb: Auftragsverarbeitungsvertrag (Art. 28 DSGVO), Prüfung des Datentransfers in die USA und der Free-Tier-Bedingungen zur Nutzung von Daten für Training. Alternative: alles lokal über Ollama. |
-| **Informationssicherheit** | Zugriffsschutz, Geheimnisse, Sicherung | n8n nur mit Anmeldung, Formulare nur intern erreichbar. API-Schlüssel nur im verschlüsselten Credential-Speicher von n8n, nie im Repository. Dateizugriff auf `/files` beschränkt (`N8N_RESTRICT_FILE_ACCESS_TO`). Backup des n8n-Daten-Volumes. |
+| **Informationssicherheit** | Zugriffsschutz, Geheimnisse, Sicherung, Manipulation | Filter gegen Prompt Injection in Angebotstexten, Warnung im Bericht und Protokoll. n8n nur mit Anmeldung, Formulare nur intern erreichbar. API-Schlüssel nur im verschlüsselten Credential-Speicher von n8n, nie im Repository. Dateizugriff auf `/files` beschränkt (`N8N_RESTRICT_FILE_ACCESS_TO`). Backup des n8n-Daten-Volumes. |
 | **EU AI Act** | Risikoklasse, KI-Kompetenz, Transparenz | Entscheidungsunterstützung im Einkauf gehört nicht zu den Hochrisiko-Bereichen nach Anhang III. Die Pflicht zur KI-Kompetenz der Nutzer (Art. 4) gilt seit 2. Februar 2025 → Schulung. Die Transparenzpflichten nach Art. 50 gelten ab 2. August 2026 → der Chat ist klar als KI-Assistent bezeichnet. Protokoll und Zitatpflicht sorgen für Nachvollziehbarkeit. |
 | **Urheberrecht und Nutzungsrechte** | Rechte an Eingaben und Modellen | Angebote werden nur intern zur Auswertung genutzt. Lizenzen: Qwen3 unter Apache 2.0, n8n unter Sustainable Use License, Nutzungsbedingungen von Google und Groq für die API (für den konkreten Einsatz prüfen). KI-Ergebnisse sind Arbeitshilfen. |
 | **Mitbestimmung (BetrVG)** | § 87 Abs. 1 Nr. 6 BetrVG | Es reicht schon, dass ein System objektiv geeignet ist, Verhalten oder Leistung zu überwachen. Deshalb protokolliert der Workflow keine Personen. Die Einführung wird trotzdem mit dem Betriebsrat abgestimmt. |
@@ -158,6 +170,7 @@ Quellen zu EU AI Act und BetrVG: [FORUM Institut: Änderungen EU AI Act August 2
 | Wissensbasis nach Neustart leer | technisch | Bei jedem Lauf neu befüllt. Dauerbetrieb mit Supabase. |
 | Leistungskontrolle von Mitarbeitenden | rechtlich, organisatorisch | Keine Personendaten im Protokoll, Abstimmung mit dem Betriebsrat |
 | Blindes Vertrauen in die Empfehlung | organisatorisch | Schulung, Empfehlung immer mit Begründung, Entscheidung beim Einkauf |
+| Manipulierte Angebote (Prompt Injection) | Sicherheit | Filter vor der KI, Warnung in Bericht und Protokoll, gehärtete Prompts, keine Vergabeempfehlung im Chat, menschliche Prüfung |
 | Zugangsdaten im Repository | Sicherheit | Exporte werden vor dem Hochladen bereinigt, Platzhalter statt IDs |
 
 ## 10. Menschliche Kontrolle
@@ -167,12 +180,13 @@ Quellen zu EU AI Act und BetrVG: [FORUM Institut: Änderungen EU AI Act August 2
 | Vor der Auswertung | Einkauf | Prüfformular: Stimmen die Dateien? Erst nach „Ja“ werden Daten gesendet. |
 | Nach der Auswertung | Einkauf | Bericht prüfen, besonders Angebote mit fehlenden Angaben und nicht gelesene Dateien |
 | Vergabe | Leitung Einkauf | Entscheidung über den Auftrag. Der Workflow gibt nur eine Empfehlung. |
+| Bei Manipulationsverdacht | Einkauf | Angebot manuell prüfen, Anbieter ansprechen, gegebenenfalls ausschließen |
 | Chat-Antworten | Nutzer | Zitat mit dem Originalangebot abgleichen, bevor die Antwort weiterverwendet wird |
 | Änderungen am Workflow | KI-Verantwortliche/r | Neue Prompts oder Modelle erst nach Test (Punkt 11) freigeben |
 
 ## 11. Test und Erfolgsmessung
 
-Alle Tests mit 15 fiktiven Angeboten (10 PDF, 3 DOCX, 1 Scan, 1 Foto). Die ausführlichen Ergebnisse mit Beispielen stehen in **[TESTS.md](TESTS.md)**.
+Alle Tests mit 15 fiktiven Angeboten (10 PDF, 3 DOCX, 1 Scan, 1 Foto), für T10 zusätzlich ein selbst erstelltes manipuliertes Angebot ([`testdaten/angebot_16_injection.pdf`](testdaten/angebot_16_injection.pdf)). Die ausführlichen Ergebnisse mit Beispielen stehen in **[TESTS.md](TESTS.md)**.
 
 | Test | Ergebnis |
 |---|---|
@@ -182,6 +196,8 @@ Alle Tests mit 15 fiktiven Angeboten (10 PDF, 3 DOCX, 1 Scan, 1 Foto). Die ausf�
 | Vollständiger Lauf | Positionen in Notion, Bericht in Notion und als Datei, etwa 4 bis 5 Minuten |
 | RAG-Chat | Mit `qwen3:8b` und Zitatpflicht 3 von 3 Testfragen richtig, mit `llama3.2:3b` vorher nur teilweise |
 | Protokoll | Eine Zeile bei „Ja“ und bei „Nein“ |
+| Fachfremde Frage im Chat (T9) | Chat lehnt ab und bleibt beim Thema |
+| Manipuliertes Angebot (T10) | Vorher: versteckte Anweisung im Chat zitiert, keine Warnung. Nachher: Zeilen entfernt, Warnung in Bericht und Protokoll, Chat liefert nur Preisvergleich. Keine Fehlalarme bei den 15 echten Übungsangeboten |
 
 **Woran man Zuverlässigkeit und Nutzen erkennt (Kennzahlen für den Pilot):**
 - Anteil vollständig ausgewerteter Dateien je Lauf (aus dem Protokoll)
@@ -200,7 +216,7 @@ Alle Tests mit 15 fiktiven Angeboten (10 PDF, 3 DOCX, 1 Scan, 1 Foto). Die ausf�
    ```
 2. **Ordner anlegen:** `files/Müller_Angebote` für die Angebote, `files/ergebnis` für Berichte und Protokoll. In `ergebnis` eine Datei `protokoll.csv` mit dieser Kopfzeile anlegen:
    ```
-   zeitpunkt;ergebnis;dateien_gesamt;ausgewertet;nicht_gelesen;freigabe;bemerkung;bericht_datei;ki_modelle
+   zeitpunkt;ergebnis;dateien_gesamt;ausgewertet;nicht_gelesen;freigabe;bemerkung;bericht_datei;ki_modelle;manipulationsverdacht
    ```
 3. **Ollama installieren und Modelle laden:**
    ```
@@ -219,4 +235,5 @@ Alle Tests mit 15 fiktiven Angeboten (10 PDF, 3 DOCX, 1 Scan, 1 Foto). Die ausf�
 - Kostenlose KI-Zugänge haben Grenzen bei Tempo und Verfügbarkeit. Fehlerbehandlung ist kein Extra, sondern Pflicht.
 - Bei RAG entscheidet auch das Sprachmodell über die Qualität. Zitatpflicht macht Fehler sichtbar.
 - Datenschutz und Mitbestimmung lassen sich schon im Design berücksichtigen: Freigabe vor dem Senden, lokale Modelle, Protokoll ohne Personendaten.
+- Daten von außen sind nie vertrauenswürdig. Auch ein PDF kann Anweisungen an die KI enthalten. Schutz gehört vor die KI, nicht nur in den Prompt.
 - Ein Workflow wächst am besten in kleinen, getesteten Schritten. Die Versionsgeschichte in n8n zeigt jede Stufe.
